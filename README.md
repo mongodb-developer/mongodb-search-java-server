@@ -1,5 +1,5 @@
-# Atlas Search Server
-A Java-based HTTP server `GET` interface for Atlas Search, supporting filtering,
+# MongoDB Search Server
+A Java-based HTTP server `GET` interface for MongoDB Search, supporting filtering,
 sorting, highlighting, pagination, and debugging.
 
 This Search Server code was initially written to support the article
