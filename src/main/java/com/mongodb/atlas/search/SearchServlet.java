@@ -41,9 +41,9 @@ public class SearchServlet extends HttpServlet {
 
     logger = Logger.getLogger(config.getServletName());
 
-    String uri = System.getenv("ATLAS_URI");
+    String uri = System.getenv("MONGODB_URI");
     if (uri == null) {
-      throw new ServletException("ATLAS_URI must be specified");
+      throw new ServletException("MONGODB_URI must be specified");
     }
 
     String databaseName = config.getInitParameter("database");
