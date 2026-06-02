@@ -3,8 +3,7 @@ A Java-based HTTP server `GET` interface for Atlas Search, supporting filtering,
 sorting, highlighting, pagination, and debugging.
 
 This Search Server code was initially written to support the article
-["How to Build a Search Service in Java with MongoDB"](https://www.mongodb.com/developer/products/atlas/atlas-search-java-server/)
-and video[TBD].
+["How to Build a Search Service in Java with MongoDB"](https://foojay.io/today/how-to-build-a-search-service-in-java-with-mongodb/).
 
 ## Building and running locally
 
@@ -19,7 +18,7 @@ To run the search server locally, follow these steps:
   configuration below.
 * Run the search service:
   `ATLAS_URI="<<insert your connection string here>>" ./gradlew jettyRun`
-* Visit [http://localhost:8080](http://localhost:8080)
+* Visit [http://localhost:8888](http://localhost:8888)
 
 ## `movies_index` configuration
 
@@ -36,9 +35,6 @@ To run the search server locally, follow these steps:
         },
         {
           "type": "string"
-        },
-        {
-          "type": "stringFacet"
         }
       ],
       "genres": [
@@ -47,14 +43,8 @@ To run the search server locally, follow these steps:
         },
         {
           "type": "string"
-        },
-        {
-          "type": "stringFacet"
         }
-      ],
-      "year": {
-        "type": "numberFacet"
-      }
+      ]
     }
   }
 }
