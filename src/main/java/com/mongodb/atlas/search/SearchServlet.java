@@ -13,7 +13,7 @@ import com.mongodb.client.model.search.SearchHighlight;
 import com.mongodb.client.model.search.SearchOperator;
 import com.mongodb.client.model.search.SearchOptions;
 import com.mongodb.client.model.search.SearchPath;
-import org.bson.Document;
+import org.bson.*;
 import org.bson.conversions.Bson;
 
 import jakarta.servlet.ServletConfig;
@@ -256,10 +256,28 @@ public class SearchServlet extends HttpServlet {
         Arrays.asList(new Document("$replaceWith", "$$SEARCH_META"), Aggregates.limit(1)))
     );
 
-    AggregateIterable<Document> aggregationResults = collection.aggregate(List.of(
-        searchStage,
-        facetStage
-    ));
+    Bson setStage = new Document("$set",
+      new Document("meta",
+        new Document("$arrayElemAt", new BsonArray(Arrays.asList(
+          new BsonString("$meta"), new BsonInt32(0)
+        ))))
+    );
+
+    List pipeline = List.of(
+      searchStage,
+      facetStage,
+      setStage
+    );
+
+//    {
+//      "$set": {
+//      "meta": {
+//        "$arrayElemAt": ["$meta", 0]
+//      }
+//    }
+//    }
+
+    AggregateIterable<Document> aggregationResults = collection.aggregate(pipeline);
 
     Document responseDoc = new Document();
     responseDoc.put("request", new Document()
@@ -273,7 +291,8 @@ public class SearchServlet extends HttpServlet {
         .append("highlight", highlightFieldsValue));
 
     if (debug) {
-      responseDoc.put("debug", aggregationResults.explain().toBsonDocument());
+      responseDoc.put("debug",
+        new BsonDocument("explain",aggregationResults.explain().toBsonDocument()));
     }
 
     // When using $facet stage, only one "document" is returned,
