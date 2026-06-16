@@ -5,7 +5,7 @@
         <load-on-startup>1</load-on-startup>
         <!--
           The connection string must be defined in the
-          `ATLAS_URI` environment variable
+          `MONGODB_URI` environment variable
         -->
         <init-param>
             <param-name>database</param-name>
