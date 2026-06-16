@@ -5,22 +5,14 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import com.mongodb.client.model.Aggregates;
-import com.mongodb.client.model.Projections;
-import com.mongodb.client.model.search.CompoundSearchOperator;
-import com.mongodb.client.model.search.SearchCount;
-import com.mongodb.client.model.search.SearchHighlight;
-import com.mongodb.client.model.search.SearchOperator;
-import com.mongodb.client.model.search.SearchOptions;
-import com.mongodb.client.model.search.SearchPath;
-import org.bson.*;
-import org.bson.conversions.Bson;
+import org.bson.Document;
 
 import jakarta.servlet.ServletConfig;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -70,6 +62,8 @@ public class SearchServlet extends HttpServlet {
    *         [&filter=genres:Adventure&filter=&lt;field_name&gt;:&lt;field_value&gt;]
    *         [&highlight=&lt;fields to highlight&gt;]
    *         [&debug=true]
+   *         [&facet.string=&lt;field name&gt;
+   *         [&facet.string.&lt;field&gt;.numBuckets=N
    */
   @Override
   protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
@@ -82,29 +76,26 @@ public class SearchServlet extends HttpServlet {
     String[] filters = request.getParameterMap().get("filter");
     String sortValue = request.getParameter("sort");
     String highlightFieldsValue = request.getParameter("highlight");
+    String facetStringFieldsValue = request.getParameter("facet.string");
 
     // Validate params
     int limit = Math.min(25, limitValue == null ? 10 : Integer.parseInt(limitValue));
     int skip = Math.min(100, skipValue == null ? 0 : Integer.parseInt(skipValue));
     boolean debug = Boolean.parseBoolean(debugValue);
 
-    if (q == null || q.length() == 0) {
-      response.sendError(400, "`q` is missing");
-      return;
-    }
-    if (searchFieldsValue == null) {
-      response.sendError(400, "`search` fields-list required");
-      return;
+    if (q == null || q.isEmpty()) {
+      q = "";
     }
 
+    // With limit=0, switch pipeline to use $searchMeta rather than $search
+    boolean searchMeta = false;
     if (limit <= 0) {
-      response.sendError(400, "`limit` invalid: " + limitValue);
-      return;
+      searchMeta = true;
     }
 
-    List<SearchOperator> filterOperators = new ArrayList<>();
-    List<SearchOperator> mustNotOperators = new ArrayList<>();
-    List<String> errors = new ArrayList<>();
+    ArrayList filterOperators = new ArrayList();
+    ArrayList mustNotOperators = new ArrayList();
+    List<String> errors = new ArrayList();
     if (filters != null) {
       for (String filter : filters) {
         int c = filter.indexOf(':');
@@ -113,28 +104,24 @@ public class SearchServlet extends HttpServlet {
           errors.add("Invalid `filter`: " + filter);
         } else {
           if (filter.charAt(0) == '-') {
-            mustNotOperators.add(SearchOperator.of(
-                new Document("equals",
+            mustNotOperators.add(new Document("equals",
                     new Document("path", filter.substring(1, c))
                         .append("value", filter.substring(c + 1)))
-            ));
+            );
           } else {
-            filterOperators.add(SearchOperator.of(
-                new Document("equals",
+            filterOperators.add(new Document("equals",
                     new Document("path", filter.substring(0, c))
                         .append("value", filter.substring(c + 1)))
-            ));
+            );
           }
         }
       }
     }
 
-    if (errors.size() > 0) {
+    if (!errors.isEmpty()) {
       response.sendError(400, errors.toString());
       return;
     }
-
-    String[] searchFields = searchFieldsValue.split(",");
 
     List<String> projectFields = new ArrayList<>();
     if (projectFieldsValue != null) {
@@ -154,17 +141,9 @@ public class SearchServlet extends HttpServlet {
     }
 
     // $search
-    List<SearchPath> searchPath = new ArrayList<>();
-    for (String searchField : searchFields) {
-      searchPath.add(SearchPath.fieldPath(searchField));
-    }
-
-    List<SearchPath> highlightPath = new ArrayList<>();
+    List highlightPath = new ArrayList();
     if (highlightFieldsValue != null) {
-      String[] highlightFields = highlightFieldsValue.split(",");
-      for (String highlightField : highlightFields) {
-        highlightPath.add(SearchPath.fieldPath(highlightField));
-      }
+      Collections.addAll(highlightPath, highlightFieldsValue.split(","));
     }
 
     // e.g. sort=year asc,rating desc => { "year": 1, rating: -1 }
@@ -200,87 +179,126 @@ public class SearchServlet extends HttpServlet {
           new Document("$meta","searchScore").append("order", -1));
     }
 
-    CompoundSearchOperator operator = SearchOperator.compound()
-        .must(List.of(SearchOperator.text(searchPath, List.of(q))));
-    if (filterOperators.size() > 0)
-      operator = operator.filter(filterOperators);
-    if (mustNotOperators.size() > 0)
-      operator = operator.mustNot(mustNotOperators);
+    Document compoundDoc = new Document();
+    if (!mustNotOperators.isEmpty()) {
+      compoundDoc.put("mustNot", mustNotOperators);
+    }
+    if (!filterOperators.isEmpty()) {
+      compoundDoc.put("filter", filterOperators);
+      }
+    if (!q.isEmpty()) {
+      Document pathDoc;
+      if (searchFieldsValue != null) {
+        String[] searchFields = searchFieldsValue.split(",");
+        List searchPath = new ArrayList<>();
+        Collections.addAll(searchPath, searchFields);
+        pathDoc = new Document("path", searchPath);
+      } else {
+        pathDoc = new Document("path", new Document("wildcard", "*"));
+      }
 
-    SearchOptions options = SearchOptions.searchOptions()
-        .option("scoreDetails", debug)
-        .index(indexName)
-        .count(SearchCount.total())
-        .option("sort", sortOption);
+      compoundDoc.put("must", new Document("text", pathDoc.append("query", q)));
+    }
+    Document compound = compoundDoc.isEmpty() ? null : new Document("compound", compoundDoc);
 
-    if (highlightPath.size() > 0) {
-      options = options.highlight(SearchHighlight.paths(highlightPath));
+    Document facetsSpecs = new Document();
+    if (facetStringFieldsValue != null) {
+      String[] facetStringFields = facetStringFieldsValue.split(",");
+      for (String facetStringField : facetStringFields) {
+        Document facetSpec = new Document("type", "string").append("path", facetStringField);
+        String numBucketsValue = request.getParameter("facet.string." + facetStringField + ".numBuckets");
+        if (numBucketsValue != null) {
+          facetSpec.put("numBuckets", Integer.parseInt(numBucketsValue));
+        }
+        facetsSpecs.put(facetStringField, facetSpec);
+      }
     }
 
-    Bson searchStage = Aggregates.search(operator, options);
+    Document facetCollector = null;
+    if (!facetsSpecs.isEmpty()) {
+      Document facets = new Document("facets", facetsSpecs);
+      if (compound != null) {
+        facets.put("operator", compound);
+      }
+      facetCollector = new Document("facet", facets);
+    }
+
+    Document searchStageDoc= new Document("scoreDetails", debug)
+                            .append("index", indexName)
+                            .append("count", new Document("type", "total"))
+                            .append("sort", sortOption);
+
+    if (!highlightPath.isEmpty()) {
+      searchStageDoc.put("highlight", new Document("path",highlightPath));
+    }
+
+      if (facetCollector == null) {
+        searchStageDoc.putAll(compound);
+    } else {
+        searchStageDoc.putAll(facetCollector);
+    }
+
+    Document searchStage = new Document(searchMeta ? "$searchMeta" : "$search", searchStageDoc);
 
     // $project
-    List<Bson> projections = new ArrayList<>();
+    Document projections = new Document();
     if (projectFieldsValue != null) {
       // Don't add _id inclusion or exclusion if no `project` parameter specified
-      projections.add(Projections.include(projectFields));
+      for (String projectField : projectFields) {
+        projections.put(projectField,1);
+      }
       if (includeId) {
-        projections.add(Projections.include("_id"));
+        projections.put("_id",1);
       } else {
-        projections.add(Projections.excludeId());
+        projections.put("_id",0);
       }
     }
     if (debug) {
-      projections.add(Projections.meta("_scoreDetails", "searchScoreDetails"));
+      projections.put("_scoreDetails", new Document("$meta", "searchScoreDetails"));
     }
     if (includeScore) {
-      projections.add(Projections.metaSearchScore("_score"));
+      projections.put("_score", new Document("$meta", "searchScore"));
     }
 
     if (highlightPath.size() > 0) {
-      projections.add(Projections.metaSearchHighlights("_highlights"));
+      projections.put("_highlights", new Document("$meta", "searchHighlights"));
     }
 
     // Using $facet stage to provide both the documents and $$SEARCH_META data.
     // The $$SEARCH_META data contains the total matching document count, etc
 
-    List<Bson> facetStages = new ArrayList<>();
-    facetStages.add(Aggregates.skip(skip));
-    facetStages.add(Aggregates.limit(limit));
+    List facetStages = new ArrayList();
     if (projections.size() > 0) {
-      facetStages.add(Aggregates.project(Projections.fields(projections)));
+      facetStages.add(new Document("$project", projections));
     }
-    Bson facetStage = new Document("$facet",
+    Document facetStage = new Document("$facet",
       new Document("docs", facetStages)
       .append("meta",
-        Arrays.asList(new Document("$replaceWith", "$$SEARCH_META"), Aggregates.limit(1)))
+        Arrays.asList(new Document("$limit", 1), new Document("$replaceWith", "$$SEARCH_META")))
     );
 
-    Bson setStage = new Document("$set",
+    // Pull "meta" data one item array up to main meta level
+    Document setStage = new Document("$set",
       new Document("meta",
-        new Document("$arrayElemAt", new BsonArray(Arrays.asList(
-          new BsonString("$meta"), new BsonInt32(0)
-        ))))
+        new Document("$arrayElemAt", Arrays.asList(
+          "$meta", 0
+        )))
     );
 
-    List pipeline = List.of(
-      searchStage,
-      facetStage,
-      setStage
-    );
+    List pipeline = new ArrayList();
+    pipeline.add(searchStage);
+    if (!searchMeta) {
+      pipeline.add(new Document("$skip", skip));
+      pipeline.add(new Document("$limit", limit));
+      pipeline.add(facetStage);
+      pipeline.add(setStage);
+    }
 
-//    {
-//      "$set": {
-//      "meta": {
-//        "$arrayElemAt": ["$meta", 0]
-//      }
-//    }
-//    }
-
+    logger.info("pipeline = " + toJSON(pipeline));
     AggregateIterable<Document> aggregationResults = collection.aggregate(pipeline);
 
     Document responseDoc = new Document();
-    responseDoc.put("request", new Document()
+    responseDoc.put("request", new Document() // TODO: Add facet parameters to this output
         .append("q", q)
         .append("skip", skip)
         .append("limit", limit)
@@ -291,16 +309,23 @@ public class SearchServlet extends HttpServlet {
         .append("highlight", highlightFieldsValue));
 
     if (debug) {
-      responseDoc.put("debug",
-        new BsonDocument("explain",aggregationResults.explain().toBsonDocument()));
+      Document debugDoc = new Document("explain",aggregationResults.explain().toBsonDocument());
+      responseDoc.put("debug", debugDoc);
     }
 
     // When using $facet stage, only one "document" is returned,
     // containing the keys specified above: "docs" and "meta"
     Document results = aggregationResults.first();
     if (results != null) {
+      Document responseSections = new Document();
       for (String s : results.keySet()) {
-        responseDoc.put(s,results.get(s));
+        responseSections.put(s, results.get(s));
+      }
+
+      if (searchMeta) {
+        responseDoc.put("meta", responseSections);
+      } else {
+        responseDoc.putAll(responseSections);
       }
     }
 
@@ -311,4 +336,29 @@ public class SearchServlet extends HttpServlet {
 
     logger.info(request.getServletPath() + "?" + request.getQueryString());
   }
+
+  public static String toJSON(List array) {
+    Document wrapperDoc = new Document("wrapper", array);
+
+    // Convert wrapper to JSON and strip out the `{"wrapper":` and `}` parts
+    String rawJson = wrapperDoc.toJson();
+    String finalJson = rawJson.substring(11, rawJson.length() - 1);
+
+    return finalJson;    
+  }
+//  public static String bsonArrayToJson(BsonArray bsonArray) {
+//    // 1. Wrap the array inside a temporary BsonDocument
+//    BsonDocument tempDoc = new BsonDocument("arrayWrapper", bsonArray);
+//
+//    // 2. Convert the document to a standard JSON string
+//    String rawJson = tempDoc.toJson();
+//
+//    // 3. Extract the JSON array string out of the objectwrapper
+//    // Input looks like: {"arrayWrapper": [ ... ]}
+//    int startPos = rawJson.indexOf(":") + 2;
+//    int endPos = rawJson.length() - 1;
+//
+//    return rawJson.substring(startPos, endPos).trim();
+//  }
+
 }
