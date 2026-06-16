@@ -18,7 +18,9 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
 public class SearchServlet extends HttpServlet {
@@ -62,8 +64,12 @@ public class SearchServlet extends HttpServlet {
    *         [&filter=genres:Adventure&filter=&lt;field_name&gt;:&lt;field_value&gt;]
    *         [&highlight=&lt;fields to highlight&gt;]
    *         [&debug=true]
-   *         [&facet.string=&lt;field name&gt;
-   *         [&facet.string.&lt;field&gt;.numBuckets=N
+   *         [&facet.string.&lt;label&gt;=&lt;field names&gt];
+   *         [&facet.string.&lt;label&gt;.numBuckets=N]
+   *         [&facet.number.&lt;label&gt;=&lt;field names&gt];
+   *         [&facet.number.&lt;label&gt;.boundaries=&lt;number list&gt;]
+   *         [&facet.number.&lt;label&gt;.default=&lt;other label&gt;]
+   *
    */
   @Override
   protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
@@ -76,7 +82,6 @@ public class SearchServlet extends HttpServlet {
     String[] filters = request.getParameterMap().get("filter");
     String sortValue = request.getParameter("sort");
     String highlightFieldsValue = request.getParameter("highlight");
-    String facetStringFieldsValue = request.getParameter("facet.string");
 
     // Validate params
     int limit = Math.min(25, limitValue == null ? 10 : Integer.parseInt(limitValue));
@@ -201,17 +206,59 @@ public class SearchServlet extends HttpServlet {
     }
     Document compound = compoundDoc.isEmpty() ? null : new Document("compound", compoundDoc);
 
-    Document facetsSpecs = new Document();
-    if (facetStringFieldsValue != null) {
-      String[] facetStringFields = facetStringFieldsValue.split(",");
-      for (String facetStringField : facetStringFields) {
-        Document facetSpec = new Document("type", "string").append("path", facetStringField);
-        String numBucketsValue = request.getParameter("facet.string." + facetStringField + ".numBuckets");
-        if (numBucketsValue != null) {
-          facetSpec.put("numBuckets", Integer.parseInt(numBucketsValue));
+    // ------
+    // FACETS
+    // ------
+    Map<String, String[]> requestMap = request.getParameterMap();
+    HashMap<String,String> stringFacetMap = new HashMap<>();
+    HashMap<String,String> numberFacetMap = new HashMap<>();
+    for (String key : requestMap.keySet()) {
+      // facet.string.str_years=year
+      // facet.string.str_years.numBuckets
+      if (key.startsWith("facet.string.")) {
+        String suffix = key.substring("facet.string.".length());
+        if (!suffix.contains(".")) {
+          stringFacetMap.put(suffix, request.getParameter(key));
         }
-        facetsSpecs.put(facetStringField, facetSpec);
       }
+
+      // facet.number.num_years=year
+      // facet.number.num_years.boundaries=0,1800
+      // facet.number.num_years.default=other
+      if (key.startsWith("facet.number.")) {
+        String suffix = key.substring("facet.number.".length());
+        if (!suffix.contains(".")) {
+          numberFacetMap.put(suffix, request.getParameter(key));
+        }
+      }
+    }
+
+    Document facetsSpecs = new Document();
+    for (String facetStringLabel : stringFacetMap.keySet()) {
+      Document facetSpec = new Document("type", "string").append("path", stringFacetMap.get(facetStringLabel));
+      String numBucketsValue = request.getParameter("facet.string." + facetStringLabel + ".numBuckets");
+      if (numBucketsValue != null) {
+        facetSpec.put("numBuckets", Integer.parseInt(numBucketsValue));
+      }
+      facetsSpecs.put(facetStringLabel, facetSpec);
+    }
+
+    for (String facetNumberLabel : numberFacetMap.keySet()) {
+      Document facetSpec = new Document("type", "number").append("path", numberFacetMap.get(facetNumberLabel));
+
+      String boundariesValue = request.getParameter("facet.number." + facetNumberLabel + ".boundaries");
+      ArrayList boundaries = new ArrayList();
+      for (String boundaryValue : boundariesValue.split(",")) {
+        boundaries.add(Double.parseDouble(boundaryValue));
+      }
+      facetSpec.put("boundaries", boundaries);
+
+      String defaultValue = request.getParameter("facet.number." + facetNumberLabel + ".default");
+      if (defaultValue != null) {
+        facetSpec.put("default", defaultValue);
+      }
+
+      facetsSpecs.put(facetNumberLabel, facetSpec);
     }
 
     Document facetCollector = null;

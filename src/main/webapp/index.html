@@ -15,7 +15,8 @@
       <ul>
         <li><a href="/search?q=blues%20brothers&search=title">q=blues brothers&amp;search=title</a></li>
         <li><a href="/search?q=purple%20rain&limit=5&skip=0&project=title,genres,plot,year&search=title,plot&filter=genres:Music">q=purple rain&amp;limit=5&amp;skip=0&amp;project=title,genres,plot,year&amp;search=title,plot&amp;filter=genres:Music</a></li>
-        <li><a href="/search?facet.string=year&facet.string.year.numBuckets=9999&limit=1">facet string years across entire collection</a></li> (requires year be indexed as `token`)
+        <li><a href="/search?facet.string.year=year&facet.string.year.numBuckets=9999&limit=1">facet string years across entire collection</a> (requires year be indexed as `token`)</li>
+        <li><a href="/search?facet.string.str_years=year&facet.string.str_years.numBuckets=9999&limit=0&facet.number.num_years=year&facet.number.num_years.boundaries=0,1800,1900,1950,1960&facet.number.num_years.default=other">facet on string and numeric years</a> (requires year be indexed as `token` and `number`)</li>
       </ul>
   </body>
 </html>
