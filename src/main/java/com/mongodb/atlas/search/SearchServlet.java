@@ -15,6 +15,9 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -28,6 +31,8 @@ public class SearchServlet extends HttpServlet {
   private String indexName;
 
   private Logger logger;
+
+  private static DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
 
   @Override
   public void init(ServletConfig config) throws ServletException {
@@ -69,6 +74,9 @@ public class SearchServlet extends HttpServlet {
    *         [&facet.number.&lt;label&gt;=&lt;field names&gt];
    *         [&facet.number.&lt;label&gt;.boundaries=&lt;number list&gt;]
    *         [&facet.number.&lt;label&gt;.default=&lt;other label&gt;]
+   *         [&facet.date.&lt;label&gt;=&lt;field names&gt];
+   *         [&facet.date.&lt;label&gt;.boundaries=&lt;date list&gt;]
+   *         [&facet.date.&lt;label&gt;.default=&lt;other label&gt;]
    *
    */
   @Override
@@ -212,6 +220,7 @@ public class SearchServlet extends HttpServlet {
     Map<String, String[]> requestMap = request.getParameterMap();
     HashMap<String,String> stringFacetMap = new HashMap<>();
     HashMap<String,String> numberFacetMap = new HashMap<>();
+    HashMap<String,String> dateFacetMap = new HashMap<>();
     for (String key : requestMap.keySet()) {
       // facet.string.str_years=year
       // facet.string.str_years.numBuckets
@@ -229,6 +238,13 @@ public class SearchServlet extends HttpServlet {
         String suffix = key.substring("facet.number.".length());
         if (!suffix.contains(".")) {
           numberFacetMap.put(suffix, request.getParameter(key));
+        }
+      }
+
+      if (key.startsWith("facet.date.")) {
+        String suffix = key.substring("facet.date.".length());
+        if (!suffix.contains(".")) {
+          dateFacetMap.put(suffix, request.getParameter(key));
         }
       }
     }
@@ -259,6 +275,28 @@ public class SearchServlet extends HttpServlet {
       }
 
       facetsSpecs.put(facetNumberLabel, facetSpec);
+    }
+
+    for (String facetDateLabel : dateFacetMap.keySet()) {
+      Document facetSpec = new Document("type", "date").append("path", dateFacetMap.get(facetDateLabel));
+
+      String boundariesValue = request.getParameter("facet.date." + facetDateLabel + ".boundaries");
+      ArrayList boundaries = new ArrayList();
+      for (String boundaryValue : boundariesValue.split(",")) {
+          try {
+              boundaries.add(dateFormat.parse(boundaryValue));
+          } catch (ParseException e) {
+              throw new RuntimeException(e);
+          }
+      }
+      facetSpec.put("boundaries", boundaries);
+
+      String defaultValue = request.getParameter("facet.date." + facetDateLabel + ".default");
+      if (defaultValue != null) {
+        facetSpec.put("default", defaultValue);
+      }
+
+      facetsSpecs.put(facetDateLabel, facetSpec);
     }
 
     Document facetCollector = null;
