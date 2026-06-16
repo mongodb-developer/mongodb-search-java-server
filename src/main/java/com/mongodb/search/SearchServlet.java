@@ -1,4 +1,4 @@
-package com.mongodb.atlas.search;
+package com.mongodb.search;
 
 import com.mongodb.client.AggregateIterable;
 import com.mongodb.client.MongoClient;

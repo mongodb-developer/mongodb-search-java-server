@@ -1,7 +1,7 @@
 <web-app>
     <servlet>
         <servlet-name>SearchServlet</servlet-name>
-        <servlet-class>com.mongodb.atlas.search.SearchServlet</servlet-class>
+        <servlet-class>com.mongodb.search.SearchServlet</servlet-class>
         <load-on-startup>1</load-on-startup>
         <!--
           The connection string must be defined in the
