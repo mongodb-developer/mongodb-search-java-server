@@ -56,6 +56,11 @@ public class SearchServlet extends HttpServlet {
     logger.info("Servlet " + config.getServletName() + " initialized: " + databaseName + " / " + collectionName + " / " + indexName);
   }
 
+  @Override
+  protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+    doGet(req,resp);
+  }
+
   /**
    * @param request  an {@link HttpServletRequest} object that contains the request the client has made of the servlet
    * @param response an {@link HttpServletResponse} object that contains the response the servlet sends to the client
@@ -77,7 +82,6 @@ public class SearchServlet extends HttpServlet {
    *         [&facet.date.&lt;label&gt;=&lt;field names&gt];
    *         [&facet.date.&lt;label&gt;.boundaries=&lt;date list&gt;]
    *         [&facet.date.&lt;label&gt;.default=&lt;other label&gt;]
-   *
    */
   @Override
   protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
@@ -431,19 +435,4 @@ public class SearchServlet extends HttpServlet {
 
     return finalJson;    
   }
-//  public static String bsonArrayToJson(BsonArray bsonArray) {
-//    // 1. Wrap the array inside a temporary BsonDocument
-//    BsonDocument tempDoc = new BsonDocument("arrayWrapper", bsonArray);
-//
-//    // 2. Convert the document to a standard JSON string
-//    String rawJson = tempDoc.toJson();
-//
-//    // 3. Extract the JSON array string out of the objectwrapper
-//    // Input looks like: {"arrayWrapper": [ ... ]}
-//    int startPos = rawJson.indexOf(":") + 2;
-//    int endPos = rawJson.length() - 1;
-//
-//    return rawJson.substring(startPos, endPos).trim();
-//  }
-
 }
