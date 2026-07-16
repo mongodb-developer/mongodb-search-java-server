@@ -213,19 +213,32 @@ public class SearchServlet extends HttpServlet {
     }
     if (!filterOperators.isEmpty()) {
       compoundDoc.put("filter", filterOperators);
-      }
+    }
+    
     if (!q.isEmpty()) {
-      Document pathDoc;
+      List<Document> searchClauses = new ArrayList<>();
       if (searchFieldsValue != null) {
-        String[] searchFields = searchFieldsValue.split(",");
-        List<Object> searchPath = new ArrayList<>();
-        Collections.addAll(searchPath, searchFields);
-        pathDoc = new Document("path", searchPath);
+        // ?search=title^5.0,plot^2,genre
+        String[] searchFieldsSpecs = searchFieldsValue.split(",");
+        for (String searchFieldsSpec : searchFieldsSpecs) {
+          String[] fieldAndBoost = searchFieldsSpec.split("\\^");
+          Document textQuery = new Document("query", q)
+                                    .append("path", fieldAndBoost[0]);
+          if (fieldAndBoost.length > 1) {
+            textQuery.put("score",
+                new Document("boost",
+                    new Document("value", Float.parseFloat(fieldAndBoost[1]))));
+          }
+
+          searchClauses.add(new Document("text",textQuery));
+        }
       } else {
-        pathDoc = new Document("path", new Document("wildcard", "*"));
+        searchClauses.add(new Document("text", 
+            new Document("path", new Document("wildcard", "*"))
+                 .append("query", q)));
       }
 
-      compoundDoc.put("must", new Document("text", pathDoc.append("query", q)));
+      compoundDoc.put("should", searchClauses);
     }
     Document compound = compoundDoc.isEmpty() ? null : new Document("compound", compoundDoc);
 

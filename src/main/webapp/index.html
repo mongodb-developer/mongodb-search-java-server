@@ -19,6 +19,12 @@
         <li><a href="/search?facet.string.str_years=year&facet.string.str_years.numBuckets=9999&limit=0&facet.number.num_years=year&facet.number.num_years.boundaries=0,1800,1900,1950,1960&facet.number.num_years.default=other">facet on string and numeric years</a> (requires year be indexed as `token` and `number`)</li>
       </ul>
 
+    Relevancy examples:
+    <ul>
+      <li><a href="http://localhost:8080/search?debugx=true&q=purple%20rain&project=title&search=title,fullplot">purple rain with title un-weighted</a></li>
+      <li><a href="http://localhost:8080/search?debugx=true&q=purple%20rain&project=title&search=title^2,fullplot">purple rain with title weighted</a></li>
+    </ul>
+
   <hr/>
   <form action="/search" method="post">
     <input type="text" name="q"/>
