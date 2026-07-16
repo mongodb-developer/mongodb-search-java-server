@@ -32,7 +32,7 @@ public class SearchServlet extends HttpServlet {
 
   private Logger logger;
 
-  private static DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+  private static final DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
 
   @Override
   public void init(ServletConfig config) throws ServletException {
@@ -45,9 +45,20 @@ public class SearchServlet extends HttpServlet {
       throw new ServletException("MONGODB_URI must be specified");
     }
 
-    String databaseName = config.getInitParameter("database");
-    String collectionName = config.getInitParameter("collection");
-    indexName = config.getInitParameter("index");
+    String databaseName = System.getenv("DATABASE");
+    if (databaseName == null) {
+      throw new ServletException("DATABASE must be specified");
+    }
+
+    String collectionName = System.getenv("COLLECTION");
+    if (collectionName == null) {
+      throw new ServletException("COLLECTION must be specified");
+    }
+
+    indexName = System.getenv("INDEX");
+    if (indexName == null) {
+      throw new ServletException("INDEX must be specified");
+    }
 
     MongoClient mongoClient = MongoClients.create(uri);
     MongoDatabase database = mongoClient.getDatabase(databaseName);
@@ -112,7 +123,7 @@ public class SearchServlet extends HttpServlet {
 
     ArrayList filterOperators = new ArrayList();
     ArrayList mustNotOperators = new ArrayList();
-    List<String> errors = new ArrayList();
+    List<String> errors = new ArrayList<>();
     if (filters != null) {
       for (String filter : filters) {
         int c = filter.indexOf(':');
@@ -207,7 +218,7 @@ public class SearchServlet extends HttpServlet {
       Document pathDoc;
       if (searchFieldsValue != null) {
         String[] searchFields = searchFieldsValue.split(",");
-        List searchPath = new ArrayList<>();
+        List<Object> searchPath = new ArrayList<>();
         Collections.addAll(searchPath, searchFields);
         pathDoc = new Document("path", searchPath);
       } else {
@@ -221,6 +232,7 @@ public class SearchServlet extends HttpServlet {
     // ------
     // FACETS
     // ------
+    Map<String,String> facetParams = new HashMap<>();
     Map<String, String[]> requestMap = request.getParameterMap();
     HashMap<String,String> stringFacetMap = new HashMap<>();
     HashMap<String,String> numberFacetMap = new HashMap<>();
@@ -232,6 +244,7 @@ public class SearchServlet extends HttpServlet {
         String suffix = key.substring("facet.string.".length());
         if (!suffix.contains(".")) {
           stringFacetMap.put(suffix, request.getParameter(key));
+          facetParams.put(key,request.getParameter(key));
         }
       }
 
@@ -242,6 +255,7 @@ public class SearchServlet extends HttpServlet {
         String suffix = key.substring("facet.number.".length());
         if (!suffix.contains(".")) {
           numberFacetMap.put(suffix, request.getParameter(key));
+          facetParams.put(key,request.getParameter(key));
         }
       }
 
@@ -249,6 +263,7 @@ public class SearchServlet extends HttpServlet {
         String suffix = key.substring("facet.date.".length());
         if (!suffix.contains(".")) {
           dateFacetMap.put(suffix, request.getParameter(key));
+          facetParams.put(key,request.getParameter(key));
         }
       }
     }
@@ -256,9 +271,11 @@ public class SearchServlet extends HttpServlet {
     Document facetsSpecs = new Document();
     for (String facetStringLabel : stringFacetMap.keySet()) {
       Document facetSpec = new Document("type", "string").append("path", stringFacetMap.get(facetStringLabel));
-      String numBucketsValue = request.getParameter("facet.string." + facetStringLabel + ".numBuckets");
+      String numBucketsKey = "facet.string." + facetStringLabel + ".numBuckets";
+      String numBucketsValue = request.getParameter(numBucketsKey);
       if (numBucketsValue != null) {
         facetSpec.put("numBuckets", Integer.parseInt(numBucketsValue));
+        facetParams.put(numBucketsKey, numBucketsValue);
       }
       facetsSpecs.put(facetStringLabel, facetSpec);
     }
@@ -266,14 +283,18 @@ public class SearchServlet extends HttpServlet {
     for (String facetNumberLabel : numberFacetMap.keySet()) {
       Document facetSpec = new Document("type", "number").append("path", numberFacetMap.get(facetNumberLabel));
 
-      String boundariesValue = request.getParameter("facet.number." + facetNumberLabel + ".boundaries");
+      String boundariesKey = "facet.number." + facetNumberLabel + ".boundaries";
+      String boundariesValue = request.getParameter(boundariesKey);
+      facetParams.put(boundariesKey, boundariesValue);
       ArrayList boundaries = new ArrayList();
       for (String boundaryValue : boundariesValue.split(",")) {
         boundaries.add(Double.parseDouble(boundaryValue));
       }
       facetSpec.put("boundaries", boundaries);
 
-      String defaultValue = request.getParameter("facet.number." + facetNumberLabel + ".default");
+      String defaultKey = "facet.number." + facetNumberLabel + ".default";
+      String defaultValue = request.getParameter(defaultKey);
+      facetParams.put(defaultKey, defaultValue);
       if (defaultValue != null) {
         facetSpec.put("default", defaultValue);
       }
@@ -387,15 +408,17 @@ public class SearchServlet extends HttpServlet {
     AggregateIterable<Document> aggregationResults = collection.aggregate(pipeline);
 
     Document responseDoc = new Document();
-    responseDoc.put("request", new Document() // TODO: Add facet parameters to this output
+    Document params = new Document() // TODO: Add facet parameters to this output
         .append("q", q)
         .append("skip", skip)
         .append("limit", limit)
         .append("search", searchFieldsValue)
         .append("project", projectFieldsValue)
-        .append("filter", filters==null ? Collections.EMPTY_LIST : List.of(filters))
+        .append("filter", filters == null ? Collections.EMPTY_LIST : List.of(filters))
         .append("sort", sortValue)
-        .append("highlight", highlightFieldsValue));
+        .append("highlight", highlightFieldsValue);
+    params.putAll(facetParams);
+    responseDoc.put("request", params);
 
     if (debug) {
       Document debugDoc = new Document("explain",aggregationResults.explain().toBsonDocument());

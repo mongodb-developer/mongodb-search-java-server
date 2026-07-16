@@ -3,22 +3,6 @@
         <servlet-name>SearchServlet</servlet-name>
         <servlet-class>com.mongodb.search.SearchServlet</servlet-class>
         <load-on-startup>1</load-on-startup>
-        <!--
-          The connection string must be defined in the
-          `MONGODB_URI` environment variable
-        -->
-        <init-param>
-            <param-name>database</param-name>
-            <param-value>sample_mflix</param-value>
-        </init-param>
-        <init-param>
-            <param-name>collection</param-name>
-            <param-value>movies</param-value>
-        </init-param>
-        <init-param>
-            <param-name>index</param-name>
-            <param-value>movies_index</param-value>
-        </init-param>
     </servlet>
 
     <servlet-mapping>
