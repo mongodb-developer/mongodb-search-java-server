@@ -1,20 +1,20 @@
 plugins {
     id 'java'
     id 'war'
-    id 'org.gretty' version '4.1.1'
+    id 'org.gretty' version '5.0.2'
 }
 
-group 'com.mongodb.search'
-version '1.0-SNAPSHOT'
+group='com.mongodb.search'
+version='1.0-SNAPSHOT'
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    implementation 'org.mongodb:mongodb-driver-sync:4.10.1'
-    implementation 'org.apache.logging.log4j:log4j-slf4j-impl:2.17.1'
-    providedCompile 'javax.servlet:javax.servlet-api:3.1.0'
+    implementation 'org.mongodb:mongodb-driver-sync:5.9.0'
+    implementation 'org.apache.logging.log4j:log4j-slf4j-impl:2.26.1'
+    providedCompile 'javax.servlet:javax.servlet-api:4.0.1'
 }
 
 gretty {
